@@ -1,0 +1,365 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Interactive MCQ Quiz (Client-side)</title>
+  <style>
+    /* ====== Simple, clean styling ====== */
+    :root{ --bg:#0f172a; --card:#0b1220; --muted:#94a3b8; --accent:#7c3aed; --glass: rgba(255,255,255,0.03); }
+    *{box-sizing:border-box}
+    body{font-family:Inter,ui-sans-serif,system-ui,Segoe UI,Roboto,Arial; background:linear-gradient(180deg,#071331 0%, #071226 100%); color:#e6eef8; margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px}
+    .app{width:960px; max-width:100%; background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01)); border-radius:14px; box-shadow:0 8px 30px rgba(2,6,23,.6); overflow:hidden; display:grid; grid-template-columns:360px 1fr}
+    header{grid-column:1/-1; padding:18px 22px; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid rgba(255,255,255,0.03)}
+    header h1{font-size:18px; margin:0}
+    .sidebar{padding:18px; border-right:1px solid rgba(255,255,255,0.02); background:linear-gradient(180deg, rgba(255,255,255,0.005), transparent)}
+    .main{padding:22px}
+    label{display:block;font-size:13px;color:var(--muted); margin-bottom:6px}
+    input[type=text], input[type=password], button{width:100%; padding:10px 12px; border-radius:8px; border:1px solid rgba(255,255,255,0.04); background:var(--glass); color:inherit}
+    .muted{color:var(--muted); font-size:13px}
+    .card{background:rgba(255,255,255,0.02); padding:12px; border-radius:10px}
+    .btn{cursor:pointer; border:0; padding:10px 12px; border-radius:8px; font-weight:600}
+    .btn-primary{background:var(--accent); color:white}
+    .btn-ghost{background:transparent; border:1px solid rgba(255,255,255,0.04)}
+    .spaced{margin-top:12px}
+    .question{font-size:18px; margin-bottom:12px}
+    .answers{display:grid; gap:8px}
+    .answer{padding:10px; border-radius:8px; cursor:pointer; border:1px solid rgba(255,255,255,0.03)}
+    .answer:hover{transform:translateY(-2px); box-shadow:0 6px 18px rgba(0,0,0,0.4)}
+    .selected{outline:2px solid rgba(124,58,237,0.25)}
+    .small{font-size:13px}
+    .leaderboard li{padding:6px 0; border-bottom:1px dashed rgba(255,255,255,0.02)}
+    .center{display:flex; gap:8px; align-items:center}
+    footer{grid-column:1/-1; padding:12px 18px; border-top:1px solid rgba(255,255,255,0.03); text-align:center; font-size:13px}
+    @media (max-width:880px){.app{grid-template-columns:1fr;}.sidebar{order:2}.main{order:1}}
+  </style>
+</head>
+<body>
+  <div class="app" role="application" aria-labelledby="app-title">
+    <header>
+      <h1 id="app-title">Interactive MCQ Quiz</h1>
+      <div class="center">
+        <div id="currentUserDisplay" class="muted small">Not signed in</div>
+        <button id="logoutBtn" class="btn btn-ghost" style="display:none">Logout</button>
+      </div>
+    </header>
+
+    <aside class="sidebar">
+      <div class="card">
+        <h3 style="margin:0 0 8px 0">Sign in / Register</h3>
+        <div id="authArea">
+          <label for="username">Username</label>
+          <input id="username" type="text" placeholder="choose a username" />
+          <label for="password" class="spaced">Password</label>
+          <input id="password" type="password" placeholder="password (local only)" />
+          <div class="spaced center">
+            <button id="registerBtn" class="btn btn-primary">Register</button>
+            <button id="loginBtn" class="btn btn-ghost">Login</button>
+          </div>
+          <div class="spaced muted small">This demo stores credentials locally in your browser (localStorage). For real apps, use a secure backend.</div>
+        </div>
+      </div>
+
+      <div class="card spaced" style="margin-top:12px;">
+        <h3 style="margin:0 0 8px 0">Leaderboard</h3>
+        <ol id="leaderboard" class="leaderboard" style="padding-left:18px; margin:0"></ol>
+      </div>
+    </aside>
+
+    <main class="main">
+      <section id="infoCard" class="card">
+        <h2 style="margin:0 0 8px 0">Welcome</h2>
+        <p class="muted">Sign in to save your attempts and leaderboard score. The quiz is interactive: choose an answer then press Next. Your score and attempt record are saved per user.</p>
+      </section>
+
+      <section id="quizArea" class="card spaced" style="display:none">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px">
+          <div class="small muted">Question <span id="qIndex">1</span>/<span id="qCount">1</span></div>
+          <div class="small muted">Attempts: <span id="attemptsCount">0</span></div>
+        </div>
+
+        <div id="questionWrap">
+          <div id="questionText" class="question">Question text</div>
+          <div id="answers" class="answers"></div>
+        </div>
+
+        <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:12px">
+          <button id="prevBtn" class="btn btn-ghost">Previous</button>
+          <button id="nextBtn" class="btn btn-primary">Next</button>
+        </div>
+      </section>
+
+      <section id="resultArea" class="card spaced" style="display:none">
+        <h3>Your results</h3>
+        <p class="muted">Score: <strong id="scoreOut">0</strong> / <span id="totalOut">0</span></p>
+        <p class="muted">Time: <span id="timeOut">0s</span></p>
+        <div class="spaced">
+          <button id="retakeBtn" class="btn btn-primary">Retake Quiz</button>
+          <button id="reviewBtn" class="btn btn-ghost">Review Answers</button>
+        </div>
+        <div id="reviewList" class="spaced" style="display:none"></div>
+      </section>
+
+    </main>
+
+    <footer>
+      <small class="muted">Client-only demo • Data saved in your browser (localStorage). Refresh won't lose users but may reset runtime state.</small>
+    </footer>
+  </div>
+
+  <script>
+    /* ======= Client-side interactive MCQ quiz =======
+       - Registers/logins users locally (localStorage)
+       - Tracks attempts and leaderboard per user
+       - Simple question navigation and scoring
+    */
+
+    // ----- Sample questions -----
+    const QUESTIONS = [
+      {id:1, q: 'What is the capital of France?', choices: ['Berlin','Madrid','Paris','Rome'], answer:2, explain: 'Paris is the capital of France.'},
+      {id:2, q: 'Which language runs in a web browser?', choices: ['Python','JavaScript','C++','Java'], answer:1, explain: 'JavaScript is the language of the web.'},
+      {id:3, q: '2 + 2 * 3 = ?', choices: ['8','12','10','6'], answer:0, explain: 'Multiplication first: 2 + (2*3) = 8.'},
+      {id:4, q: 'Which planet is known as the Red Planet?', choices: ['Venus','Mars','Jupiter','Saturn'], answer:1, explain: 'Mars is the Red Planet.'}
+    ];
+
+    // ----- LocalStorage helpers -----
+    const STORAGE_KEYS = {
+      USERS: 'mcq_users_v1', // object: {username: {password, attempts:[], bestScore}}
+      CURRENT: 'mcq_current_user_v1'
+    };
+
+    function readUsers(){
+      try{ return JSON.parse(localStorage.getItem(STORAGE_KEYS.USERS) || '{}'); }catch(e){ return {}; }
+    }
+    function writeUsers(u){ localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(u)); }
+    function setCurrentUser(name){ localStorage.setItem(STORAGE_KEYS.CURRENT, name); }
+    function getCurrentUser(){ return localStorage.getItem(STORAGE_KEYS.CURRENT); }
+    function clearCurrentUser(){ localStorage.removeItem(STORAGE_KEYS.CURRENT); }
+
+    // ----- DOM elements -----
+    const usernameInput = document.getElementById('username');
+    const passwordInput = document.getElementById('password');
+    const registerBtn = document.getElementById('registerBtn');
+    const loginBtn = document.getElementById('loginBtn');
+    const logoutBtn = document.getElementById('logoutBtn');
+    const currentUserDisplay = document.getElementById('currentUserDisplay');
+
+    const quizArea = document.getElementById('quizArea');
+    const questionText = document.getElementById('questionText');
+    const answersWrap = document.getElementById('answers');
+    const qIndexOut = document.getElementById('qIndex');
+    const qCountOut = document.getElementById('qCount');
+    const prevBtn = document.getElementById('prevBtn');
+    const nextBtn = document.getElementById('nextBtn');
+    const attemptsCount = document.getElementById('attemptsCount');
+
+    const resultArea = document.getElementById('resultArea');
+    const scoreOut = document.getElementById('scoreOut');
+    const totalOut = document.getElementById('totalOut');
+    const timeOut = document.getElementById('timeOut');
+    const retakeBtn = document.getElementById('retakeBtn');
+    const reviewBtn = document.getElementById('reviewBtn');
+    const reviewList = document.getElementById('reviewList');
+
+    const leaderboardEl = document.getElementById('leaderboard');
+
+    // ----- App state -----
+    let state = {
+      user: null,
+      index: 0,
+      answers: Array(QUESTIONS.length).fill(null),
+      startTs: null,
+      finished: false
+    };
+
+    // ----- Initialization -----
+    function init(){
+      renderLeaderboard();
+      const cur = getCurrentUser();
+      if(cur){ signIn(cur, true); }
+      attachHandlers();
+    }
+
+    // ----- Auth functions -----
+    function register(){
+      const u = usernameInput.value.trim();
+      const p = passwordInput.value;
+      if(!u) return alert('Enter username');
+      const users = readUsers();
+      if(users[u]) return alert('Username taken — choose another');
+      users[u] = { password: p, attempts: [], bestScore: 0 };
+      writeUsers(users);
+      setCurrentUser(u);
+      signIn(u);
+      alert('Registered and signed in as ' + u);
+      usernameInput.value = '';
+      passwordInput.value = '';
+    }
+
+    function login(){
+      const u = usernameInput.value.trim();
+      const p = passwordInput.value;
+      if(!u) return alert('Enter username');
+      const users = readUsers();
+      if(!users[u] || users[u].password !== p) return alert('Invalid username or password');
+      setCurrentUser(u);
+      signIn(u);
+      usernameInput.value = '';
+      passwordInput.value = '';
+    }
+
+    function signIn(username, silent=false){
+      state.user = username;
+      currentUserDisplay.textContent = username;
+      logoutBtn.style.display = 'inline-block';
+      document.getElementById('authArea').style.display = 'none';
+      quizArea.style.display = 'block';
+      state.index = 0; state.answers = Array(QUESTIONS.length).fill(null); state.finished = false; state.startTs = Date.now();
+      updateQuestion();
+      if(!silent) renderLeaderboard();
+      updateAttemptsCount();
+    }
+
+    function logout(){
+      clearCurrentUser();
+      state.user = null;
+      currentUserDisplay.textContent = 'Not signed in';
+      logoutBtn.style.display = 'none';
+      document.getElementById('authArea').style.display = 'block';
+      quizArea.style.display = 'none';
+      resultArea.style.display = 'none';
+    }
+
+    // ----- Quiz rendering & interaction -----
+    function updateQuestion(){
+      const q = QUESTIONS[state.index];
+      qIndexOut.textContent = state.index + 1;
+      qCountOut.textContent = QUESTIONS.length;
+      questionText.textContent = q.q;
+      answersWrap.innerHTML = '';
+      q.choices.forEach((c, i) =>{
+        const btn = document.createElement('div');
+        btn.className = 'answer';
+        btn.tabIndex = 0;
+        btn.setAttribute('role','button');
+        btn.innerHTML = `<div>${String.fromCharCode(65+i)}. ${c}</div>`;
+        if(state.answers[state.index] === i) btn.classList.add('selected');
+        btn.addEventListener('click', ()=> selectAnswer(i));
+        btn.addEventListener('keydown', (e)=>{ if(e.key === 'Enter') selectAnswer(i); });
+        answersWrap.appendChild(btn);
+      });
+      prevBtn.disabled = state.index === 0;
+      nextBtn.textContent = (state.index === QUESTIONS.length-1) ? 'Submit' : 'Next';
+    }
+
+    function selectAnswer(choiceIndex){
+      state.answers[state.index] = choiceIndex;
+      Array.from(answersWrap.children).forEach((el, idx)=> el.classList.toggle('selected', idx === choiceIndex));
+    }
+
+    function next(){
+      if(state.index === QUESTIONS.length - 1){
+        // submit
+        submitQuiz();
+        return;
+      }
+      state.index++;
+      updateQuestion();
+    }
+    function prev(){ state.index = Math.max(0, state.index-1); updateQuestion(); }
+
+    function submitQuiz(){
+      // require at least one answer
+      if(state.answers.every(a=> a===null)) return alert('Please answer at least one question before submitting.');
+      state.finished = true;
+      const endTs = Date.now();
+      const elapsed = Math.round((endTs - state.startTs)/1000);
+      const score = computeScore();
+
+      // save attempt
+      const users = readUsers();
+      const userRecord = users[state.user] || { password:'', attempts:[], bestScore:0 };
+      userRecord.attempts.push({ ts: Date.now(), score, total:QUESTIONS.length, timeSec: elapsed });
+      if(score > (userRecord.bestScore || 0)) userRecord.bestScore = score;
+      users[state.user] = userRecord;
+      writeUsers(users);
+
+      // show results
+      scoreOut.textContent = score;
+      totalOut.textContent = QUESTIONS.length;
+      timeOut.textContent = elapsed + 's';
+      quizArea.style.display = 'none';
+      resultArea.style.display = 'block';
+      renderLeaderboard();
+      updateAttemptsCount();
+    }
+
+    function computeScore(){
+      let s = 0;
+      state.answers.forEach((a, i)=>{ if(a === QUESTIONS[i].answer) s++; });
+      return s;
+    }
+
+    function retake(){
+      state.index = 0; state.answers = Array(QUESTIONS.length).fill(null); state.startTs = Date.now(); state.finished = false;
+      resultArea.style.display = 'none'; quizArea.style.display = 'block'; updateQuestion(); updateAttemptsCount();
+    }
+
+    function review(){
+      reviewList.style.display = reviewList.style.display === 'none' ? 'block' : 'none';
+      if(reviewList.style.display === 'block'){
+        reviewList.innerHTML = '';
+        QUESTIONS.forEach((q, i)=>{
+          const div = document.createElement('div');
+          div.className = 'card spaced';
+          div.style.padding = '10px';
+          div.innerHTML = `<strong>${i+1}. ${q.q}</strong><div class='muted small'>Your answer: ${state.answers[i]===null? '—' : String.fromCharCode(65+state.answers[i])+'. '+q.choices[state.answers[i]]}</div><div class='muted small'>Correct: ${String.fromCharCode(65+q.answer)}. ${q.choices[q.answer]}</div><div class='muted small'>Explanation: ${q.explain || '—'}</div>`;
+          reviewList.appendChild(div);
+        });
+      }
+    }
+
+    // ----- Leaderboard -----
+    function renderLeaderboard(){
+      const users = readUsers();
+      const arr = Object.keys(users).map(name => ({ name, best: users[name].bestScore || 0, attempts: (users[name].attempts||[]).length }));
+      arr.sort((a,b)=> b.best - a.best || b.attempts - a.attempts || a.name.localeCompare(b.name));
+      leaderboardEl.innerHTML = '';
+      arr.slice(0,10).forEach(u=>{
+        const li = document.createElement('li');
+        li.innerHTML = `<strong>${u.name}</strong> <span class='muted small'> — best: ${u.best} / ${QUESTIONS.length} • attempts: ${u.attempts}</span>`;
+        leaderboardEl.appendChild(li);
+      });
+      if(arr.length === 0) leaderboardEl.innerHTML = '<li class="muted small">No players yet</li>';
+    }
+
+    function updateAttemptsCount(){
+      if(!state.user) return attemptsCount.textContent = '0';
+      const users = readUsers();
+      const u = users[state.user];
+      attemptsCount.textContent = (u && u.attempts) ? u.attempts.length : 0;
+    }
+
+    // ----- Attach handlers -----
+    function attachHandlers(){
+      registerBtn.addEventListener('click', register);
+      loginBtn.addEventListener('click', login);
+      logoutBtn.addEventListener('click', ()=>{ if(confirm('Logout?')) logout(); });
+      nextBtn.addEventListener('click', next);
+      prevBtn.addEventListener('click', prev);
+      retakeBtn.addEventListener('click', retake);
+      reviewBtn.addEventListener('click', review);
+
+      // keyboard navigation: left/right
+      document.addEventListener('keydown', (e)=>{
+        if(!state.user) return;
+        if(e.key === 'ArrowRight') next();
+        if(e.key === 'ArrowLeft') prev();
+      });
+    }
+
+    // run init
+    init();
+  </script>
+</body>
+</html>
